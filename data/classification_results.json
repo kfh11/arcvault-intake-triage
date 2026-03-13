@@ -1,0 +1,153 @@
+[
+  {
+    "source": "Email",
+    "raw_message": "Hi, I tried logging in this morning and keep getting a 403 error. My account is arcvault.io/user/jsmith. This started after your update last Tuesday.",
+    "reasoning": "The customer is reporting a specific error (403) when trying to log in, which indicates a broken functionality. The mention of the error occurring after a recent update reinforces that this is a Bug Report. There are no signals pointing to other categories, making this a clear-cut case.",
+    "single_category_match": true,
+    "alternative_category": null,
+    "user_expresses_uncertainty": false,
+    "explicit_identifiers_present": true,
+    "confidence": 0.92,
+    "confidence_clamped": false,
+    "category": "Bug Report",
+    "priority": "High",
+    "core_issue": "Customer is receiving a 403 error when logging in, which started after a recent update.",
+    "identifiers": {
+      "account_ids": [
+        "arcvault.io/user/jsmith"
+      ],
+      "invoice_numbers": [],
+      "error_codes": [
+        "403"
+      ],
+      "urls": [],
+      "other": [
+        "update last Tuesday"
+      ]
+    },
+    "urgency_signal": "High",
+    "destination_queue": "Engineering",
+    "escalation_needed": false,
+    "escalation_reason": null,
+    "human_review_flag": false,
+    "summary": "Customer reports a 403 error when attempting to log in, which began after the update last Tuesday. Engineering should investigate the login functionality to resolve this issue.",
+    "input_id": 1
+  },
+  {
+    "source": "Web Form",
+    "raw_message": "We'd love to see a bulk export feature for our audit logs. We're a compliance-heavy org and this would save us hours every month.",
+    "reasoning": "The customer is requesting a new functionality — a bulk export feature for audit logs. This is clearly a Feature Request as it expresses a desire for an enhancement that does not currently exist. There are no signals indicating any other category, making this a straightforward classification.",
+    "single_category_match": true,
+    "alternative_category": null,
+    "user_expresses_uncertainty": false,
+    "explicit_identifiers_present": false,
+    "confidence": 0.9,
+    "confidence_clamped": false,
+    "category": "Feature Request",
+    "priority": "Medium",
+    "core_issue": "Customer requests a bulk export feature for audit logs to improve compliance efficiency.",
+    "identifiers": {
+      "account_ids": [],
+      "invoice_numbers": [],
+      "error_codes": [],
+      "urls": [],
+      "other": []
+    },
+    "urgency_signal": "Moderate",
+    "destination_queue": "Product",
+    "escalation_needed": false,
+    "escalation_reason": null,
+    "human_review_flag": false,
+    "summary": "Customer is requesting a bulk export feature for audit logs to enhance compliance processes, which would save significant time each month. This request should be routed to the Product team for consideration.",
+    "input_id": 2
+  },
+  {
+    "source": "Support Portal",
+    "raw_message": "Invoice #8821 shows a charge of $1,240 but our contract rate is $980/month. Can someone look into this?",
+    "reasoning": "The customer is raising a concern about an invoice charge that exceeds their contract rate, indicating a billing discrepancy. The specific dollar amounts mentioned ($1,240 charge vs. $980 contract rate) clearly categorize this as a Billing Issue. There are no signals pointing to other categories, making this a straightforward case.",
+    "single_category_match": true,
+    "alternative_category": null,
+    "user_expresses_uncertainty": false,
+    "explicit_identifiers_present": true,
+    "confidence": 0.92,
+    "confidence_clamped": false,
+    "category": "Billing Issue",
+    "priority": "High",
+    "core_issue": "Customer reports an invoice charge of $1,240, which exceeds their contract rate of $980/month.",
+    "identifiers": {
+      "account_ids": [],
+      "invoice_numbers": [
+        "8821"
+      ],
+      "error_codes": [],
+      "urls": [],
+      "other": []
+    },
+    "urgency_signal": "High",
+    "destination_queue": "Escalation",
+    "escalation_needed": true,
+    "escalation_reason": "Billing discrepancy exceeds $500.",
+    "human_review_flag": true,
+    "summary": "Customer is disputing an invoice charge of $1,240, which is higher than their agreed contract rate of $980/month. This requires urgent attention from the Billing team to resolve the discrepancy.",
+    "input_id": 3
+  },
+  {
+    "source": "Email",
+    "raw_message": "I'm not sure if this is the right place to ask, but is there a way to set up SSO with Okta? We're evaluating switching our auth provider.",
+    "reasoning": "The customer is asking about the possibility of setting up SSO with Okta, which indicates a Technical Question about configuration. However, they also mention evaluating a switch in their auth provider, which could imply a Feature Request if they are looking for new capabilities. The uncertainty in their phrasing ('I'm not sure if this is the right place to ask') suggests they are not fully confident in their request. Therefore, while the primary category is Technical Question, the alternative category is Feature Request due to the mention of evaluating a switch.",
+    "single_category_match": false,
+    "alternative_category": "Feature Request",
+    "user_expresses_uncertainty": true,
+    "explicit_identifiers_present": false,
+    "confidence": 0.68,
+    "confidence_clamped": false,
+    "category": "Technical Question",
+    "priority": "Medium",
+    "core_issue": "Customer is inquiring about setting up SSO with Okta while considering a switch in their authentication provider.",
+    "identifiers": {
+      "account_ids": [],
+      "invoice_numbers": [],
+      "error_codes": [],
+      "urls": [],
+      "other": [
+        "SSO",
+        "Okta"
+      ]
+    },
+    "urgency_signal": "Moderate",
+    "destination_queue": "Escalation",
+    "escalation_needed": true,
+    "escalation_reason": "Low confidence (0.68) below threshold (0.7)",
+    "human_review_flag": true,
+    "summary": "Customer is looking for guidance on setting up SSO with Okta and is considering switching their authentication provider. This inquiry should be routed to IT/Security for assistance with SSO configuration.",
+    "input_id": 4
+  },
+  {
+    "source": "Web Form",
+    "raw_message": "Your dashboard stopped loading for us around 2pm EST. Checked our end — it's definitely on yours. Multiple users affected.",
+    "reasoning": "The customer is reporting that their dashboard is not loading, and they explicitly state that multiple users are affected. This indicates a service disruption, which fits the Incident/Outage category. The mention of a specific time (2pm EST) further supports the urgency of the issue. Since multiple users are affected, this is a high-priority incident that needs immediate attention.",
+    "single_category_match": true,
+    "alternative_category": null,
+    "user_expresses_uncertainty": false,
+    "explicit_identifiers_present": false,
+    "confidence": 0.92,
+    "confidence_clamped": true,
+    "category": "Incident/Outage",
+    "priority": "High",
+    "core_issue": "Dashboard stopped loading for multiple users around 2pm EST.",
+    "identifiers": {
+      "account_ids": [],
+      "invoice_numbers": [],
+      "error_codes": [],
+      "urls": [],
+      "other": []
+    },
+    "urgency_signal": "High",
+    "destination_queue": "Escalation",
+    "escalation_needed": true,
+    "escalation_reason": "Message explicitly states that multiple users are affected by a service disruption.",
+    "human_review_flag": true,
+    "summary": "Customer reports that their dashboard stopped loading for multiple users around 2pm EST, indicating a potential outage. Engineering should investigate the issue as it affects multiple users.",
+    "input_id": 5
+  }
+]

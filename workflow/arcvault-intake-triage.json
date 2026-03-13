@@ -1,0 +1,575 @@
+{
+  "name": "ArcVault Intake Triage Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "arcvault-triage",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "f2cd4c13-9928-4ab4-932c-0aeaca459ad2",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "c38c8d23-1de2-4b50-a255-407df5ada073"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "42e34924-e505-44e0-b02a-a22720ec67d8",
+              "name": "classificationInput",
+              "value": "={{ \"Source: \" + $json.body.source + \"\\nMessage: \" + $json.body.message }}",
+              "type": "string"
+            },
+            {
+              "id": "c92d59d6-9e68-483c-99c0-50a011f81944",
+              "name": "source",
+              "value": "={{ $json.body.source }}",
+              "type": "string"
+            },
+            {
+              "id": "76494114-bab6-4ae9-9cfb-aa252f594bee",
+              "name": "message",
+              "value": "={{ $json.body.message }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {
+          "include": "none"
+        }
+      },
+      "id": "7093a403-1f86-42c1-9c0d-7d14d75f0d32",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst item = items[0];\n\nconst source = item.json.source;\nconst message = item.json.message;\nconst classificationInput = item.json.classificationInput;\n\nconst SYSTEM_PROMPT = \"You are an expert intake triage agent for ArcVault, a B2B software company. Your job is to classify, enrich, and summarize inbound customer requests so they can be routed to the correct internal team.\\n\\n## Categories (assign exactly one)\\n\\n- **Bug Report**: The customer describes something broken, an error, or unexpected behavior in the product. Look for error codes, stack traces, \\\"doesn't work,\\\" \\\"broken,\\\" or references to a recent update causing issues.\\n- **Feature Request**: The customer asks for new functionality, an enhancement, or a capability the product does not currently have. Look for \\\"would love to see,\\\" \\\"can you add,\\\" \\\"it would be great if.\\\"\\n- **Billing Issue**: The customer raises a concern about invoices, charges, pricing discrepancies, refunds, or contract terms. Look for dollar amounts, invoice numbers, \\\"overcharged,\\\" \\\"contract rate.\\\"\\n- **Technical Question**: The customer asks how to configure, integrate, or use a feature \\u2014 not reporting it as broken. Look for \\\"how do I,\\\" \\\"is it possible to,\\\" \\\"set up,\\\" \\\"integrate with.\\\"\\n- **Incident/Outage**: The customer reports a service disruption affecting multiple users or the entire platform. Look for \\\"down,\\\" \\\"outage,\\\" \\\"not loading,\\\" \\\"multiple users affected,\\\" time references for when it started.\\n\\n## Priority rules\\n\\n- **High**: Production-blocking issues, service outages, billing errors above $500, security concerns, or anything affecting multiple users.\\n- **Medium**: Issues impacting a single user's workflow, non-urgent billing questions, or feature requests with a clear business justification.\\n- **Low**: General inquiries, informational questions, nice-to-have feature requests, or issues with easy workarounds.\\n\\n## Classification signals (answer each factually based on the message text)\\n\\nBefore scoring confidence, you must answer these factual questions about the message. These are observations, not judgments. Answer based only on what the message explicitly states.\\n\\n- **single_category_match**: Set to true ONLY if the message's content maps to exactly one category with zero signals pointing elsewhere. If ANY phrase in the message could support a second category, set to false. Be strict \\u2014 a message asking \\\"is there a way to set up SSO\\\" while also \\\"evaluating switching auth providers\\\" has signals for both Technical Question and Feature Request, so single_category_match is false.\\n- **alternative_category**: If single_category_match is false, name the strongest alternative category (must be a valid Category enum value). If single_category_match is true, set to null.\\n- **user_expresses_uncertainty**: Set to true if the sender uses hedging language such as \\\"I'm not sure\\\", \\\"not sure if this is the right place\\\", \\\"I think\\\", \\\"maybe\\\", \\\"is there a way to\\\", or questions whether they are contacting the right team. Set to false if the sender is direct and assertive about what they need (e.g., \\\"Your dashboard stopped loading\\\" is assertive even if the problem is severe).\\n- **explicit_identifiers_present**: Set to true if the message contains ANY of: error codes (403, 500, etc.), HTTP status codes, invoice or ticket numbers, account IDs or profile URLs, specific dollar amounts. Set to false if the message is purely descriptive with no concrete identifiers or reference numbers.\\n\\n## Confidence scoring\\n\\nYour confidence score MUST be mathematically consistent with the signal fields you already filled in above. You cannot contradict your own observations. Follow these range constraints strictly:\\n\\n- If single_category_match is false AND alternative_category is not null: confidence MUST be between 0.50 and 0.75.\\n- If single_category_match is false OR user_expresses_uncertainty is true: confidence MUST be between 0.60 and 0.82.\\n- If single_category_match is true AND user_expresses_uncertainty is false AND explicit_identifiers_present is true: confidence MUST be between 0.90 and 0.97.\\n- If single_category_match is true AND user_expresses_uncertainty is false AND explicit_identifiers_present is false: confidence MUST be between 0.82 and 0.92.\\n\\nWithin each range, use your judgment based on the strength of category signals. A message with overwhelming evidence for one category scores at the top of its range. A message where the fit is correct but less emphatic scores at the bottom of its range.\\n\\nDo NOT default to the top of any range. Distribute within the range based on signal strength.\\n\\n## Escalation rules\\n\\nSet `escalation_needed` to true AND provide an `escalation_reason` if ANY of the following apply:\\n1. The message explicitly states that multiple users are affected by a service disruption, using phrases like \\\"outage,\\\" \\\"down for all users,\\\" \\\"all users affected,\\\" or \\\"system down.\\\" Do NOT infer multi-user impact \\u2014 the customer must explicitly state it.\\n2. A billing discrepancy exceeds $500 (or the exact amount is unclear but appears large).\\n3. The message mentions security concerns (data breach, unauthorized access).\\n4. The message cannot be confidently assigned to a single category because it contains explicit conflicting signals for two or more categories.\\n\\nIf none of these apply, set `escalation_needed` to false and `escalation_reason` to null.\\n\\n## Entity extraction\\n\\nExtract all identifiers mentioned in the message:\\n- account_ids: User accounts, profile URLs, usernames\\n- invoice_numbers: Invoice or receipt numbers\\n- error_codes: HTTP status codes, application error codes\\n- urls: Any URLs mentioned\\n- other: Any other identifiers (ticket numbers, product names, dates)\\n\\nIf a category has no matches, return an empty array \\u2014 never omit the field.\\n\\n## Examples\\n\\nNote: Confidence values are omitted from examples intentionally. The model must compute confidence from the range constraints above based on the signal pattern, not copy values from examples.\\n\\nExample 1 \\u2014 Clear-cut classification:\\nInput: \\\"Source: Email\\\\nMessage: We're getting a 500 Internal Server Error on the /api/reports endpoint. Started right after the v2.4 deployment yesterday. Affects every report we try to generate.\\\"\\nOutput:\\n{\\n  \\\"reasoning\\\": \\\"The customer is reporting a specific error (500) on a specific endpoint, tied to a recent deployment. This is unambiguously a Bug Report \\u2014 a broken feature caused by an update, not a question about how to use it. Multiple reinforcing signals (error code, specific endpoint, deployment trigger) all point to Bug Report with no competing category. Priority is High because report generation is completely broken.\\\",\\n  \\\"single_category_match\\\": true,\\n  \\\"alternative_category\\\": null,\\n  \\\"user_expresses_uncertainty\\\": false,\\n  \\\"explicit_identifiers_present\\\": true,\\n  \\\"category\\\": \\\"Bug Report\\\",\\n  \\\"priority\\\": \\\"High\\\",\\n  \\\"core_issue\\\": \\\"500 Internal Server Error on /api/reports endpoint following v2.4 deployment.\\\",\\n  \\\"identifiers\\\": {\\\"account_ids\\\": [], \\\"invoice_numbers\\\": [], \\\"error_codes\\\": [\\\"500\\\"], \\\"urls\\\": [\\\"/api/reports\\\"], \\\"other\\\": [\\\"v2.4\\\"]},\\n  \\\"urgency_signal\\\": \\\"High\\\",\\n  \\\"suggested_routing\\\": \\\"Engineering\\\",\\n  \\\"escalation_needed\\\": false,\\n  \\\"escalation_reason\\\": null,\\n  \\\"summary\\\": \\\"Customer reports a 500 error on the /api/reports endpoint that began after the v2.4 deployment. Every report generation attempt fails. Engineering should investigate the deployment changes.\\\"\\n}\\n\\u2192 Confidence determined by signal pattern: single=true, uncertain=false, ids=true \\u2192 range 0.90\\u20130.97\\n\\nExample 2 \\u2014 Ambiguous classification:\\nInput: \\\"Source: Web Form\\\\nMessage: The SSO login page keeps timing out. Not sure if it's our IdP or your end. About half our team can't get in.\\\"\\nOutput:\\n{\\n  \\\"reasoning\\\": \\\"This could be a Bug Report (timeout is a malfunction), a Technical Question (SSO configuration issue with their IdP), or an Incident/Outage (half the team affected suggests partial outage). The customer explicitly states uncertainty about the root cause. I'll classify as Bug Report since a timeout is most likely a product malfunction, but Technical Question and Incident/Outage both have real supporting signals.\\\",\\n  \\\"single_category_match\\\": false,\\n  \\\"alternative_category\\\": \\\"Technical Question\\\",\\n  \\\"user_expresses_uncertainty\\\": true,\\n  \\\"explicit_identifiers_present\\\": false,\\n  \\\"category\\\": \\\"Bug Report\\\",\\n  \\\"priority\\\": \\\"High\\\",\\n  \\\"core_issue\\\": \\\"SSO login page is timing out for approximately half the customer's team, root cause unclear.\\\",\\n  \\\"identifiers\\\": {\\\"account_ids\\\": [], \\\"invoice_numbers\\\": [], \\\"error_codes\\\": [], \\\"urls\\\": [], \\\"other\\\": [\\\"SSO\\\", \\\"IdP\\\"]},\\n  \\\"urgency_signal\\\": \\\"High\\\",\\n  \\\"suggested_routing\\\": \\\"Engineering\\\",\\n  \\\"escalation_needed\\\": true,\\n  \\\"escalation_reason\\\": \\\"Message has explicit conflicting signals for Bug Report, Technical Question, and Incident/Outage.\\\",\\n  \\\"summary\\\": \\\"Customer reports SSO login timeouts affecting about half their team, unsure if the issue is on their IdP or ArcVault's side. Needs triage to determine if this is a bug, config issue, or outage.\\\"\\n}\\n\\u2192 Confidence determined by signal pattern: single=false, alt\\u2260null \\u2192 range 0.50\\u20130.75\\n\\nExample 3 \\u2014 Informational request:\\nInput: \\\"Source: Support Portal\\\\nMessage: Do you have any documentation on rate limits for the REST API? We're building an integration and want to make sure we stay within bounds.\\\"\\nOutput:\\n{\\n  \\\"reasoning\\\": \\\"The customer is asking for documentation \\u2014 this is an informational question, not a bug report or feature request. The phrasing 'do you have documentation' and 'building an integration' are strong Technical Question signals. A distant alternative is Feature Request if the docs don't exist, but the customer is asking for existing resources, not new functionality.\\\",\\n  \\\"single_category_match\\\": true,\\n  \\\"alternative_category\\\": null,\\n  \\\"user_expresses_uncertainty\\\": false,\\n  \\\"explicit_identifiers_present\\\": false,\\n  \\\"category\\\": \\\"Technical Question\\\",\\n  \\\"priority\\\": \\\"Low\\\",\\n  \\\"core_issue\\\": \\\"Customer is requesting documentation on REST API rate limits for an integration they are building.\\\",\\n  \\\"identifiers\\\": {\\\"account_ids\\\": [], \\\"invoice_numbers\\\": [], \\\"error_codes\\\": [], \\\"urls\\\": [], \\\"other\\\": [\\\"REST API\\\"]},\\n  \\\"urgency_signal\\\": \\\"Low\\\",\\n  \\\"suggested_routing\\\": \\\"IT/Security\\\",\\n  \\\"escalation_needed\\\": false,\\n  \\\"escalation_reason\\\": null,\\n  \\\"summary\\\": \\\"Customer is building an integration and needs documentation on REST API rate limits. Routing to IT/Security for documentation support.\\\"\\n}\\n\\u2192 Confidence determined by signal pattern: single=true, uncertain=false, ids=false \\u2192 range 0.82\\u20130.92\\n\\n## Output instructions\\n\\n1. In the `reasoning` field, think step-by-step: what is the customer asking? Which category fits best? Are there plausible alternatives?\\n2. Fill in the signal fields factually.\\n3. Score confidence within the range dictated by your signals.\\n4. Then fill in all classification and enrichment fields.\\n5. The `summary` field must be 2\\u20133 sentences written for the receiving team \\u2014 include the core issue, any key identifiers, and the recommended action.\\n6. The `core_issue` field must be exactly one sentence.\\n7. The `suggested_routing` field should be one of: Engineering, Product, Billing, IT/Security.\\n\\n\";\n\nconst jsonSchema = {\"type\": \"object\", \"properties\": {\"reasoning\": {\"type\": \"string\"}, \"single_category_match\": {\"type\": \"boolean\"}, \"alternative_category\": {\"type\": [\"string\", \"null\"], \"enum\": [\"Bug Report\", \"Feature Request\", \"Billing Issue\", \"Technical Question\", \"Incident/Outage\", null]}, \"user_expresses_uncertainty\": {\"type\": \"boolean\"}, \"explicit_identifiers_present\": {\"type\": \"boolean\"}, \"confidence\": {\"type\": \"number\"}, \"category\": {\"type\": \"string\", \"enum\": [\"Bug Report\", \"Feature Request\", \"Billing Issue\", \"Technical Question\", \"Incident/Outage\"]}, \"priority\": {\"type\": \"string\", \"enum\": [\"Low\", \"Medium\", \"High\"]}, \"core_issue\": {\"type\": \"string\"}, \"identifiers\": {\"type\": \"object\", \"properties\": {\"account_ids\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}, \"invoice_numbers\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}, \"error_codes\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}, \"urls\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}, \"other\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}}, \"required\": [\"account_ids\", \"invoice_numbers\", \"error_codes\", \"urls\", \"other\"], \"additionalProperties\": false}, \"urgency_signal\": {\"type\": \"string\", \"enum\": [\"Critical\", \"High\", \"Moderate\", \"Low\"]}, \"suggested_routing\": {\"type\": \"string\"}, \"escalation_needed\": {\"type\": \"boolean\"}, \"escalation_reason\": {\"type\": [\"string\", \"null\"]}, \"summary\": {\"type\": \"string\"}}, \"required\": [\"reasoning\", \"single_category_match\", \"alternative_category\", \"user_expresses_uncertainty\", \"explicit_identifiers_present\", \"confidence\", \"category\", \"priority\", \"core_issue\", \"identifiers\", \"urgency_signal\", \"suggested_routing\", \"escalation_needed\", \"escalation_reason\", \"summary\"], \"additionalProperties\": false};\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'https://api.openai.com/v1/chat/completions',\n  headers: {\n    'Authorization': 'Bearer ' + $env.OPENAI_API_KEY,\n    'Content-Type': 'application/json'\n  },\n  body: JSON.stringify({\n    model: 'gpt-4o-mini',\n    temperature: 0,\n    seed: 42,\n    messages: [\n      { role: 'system', content: SYSTEM_PROMPT },\n      { role: 'user', content: classificationInput }\n    ],\n    response_format: {\n      type: 'json_schema',\n      json_schema: {\n        name: 'intake_classification',\n        strict: true,\n        schema: jsonSchema\n      }\n    }\n  })\n});\n\nconst parsed = typeof response === 'string' ? JSON.parse(response) : response;\nconst choice = parsed.choices[0];\n\nif (choice.finish_reason === 'length') {\n  throw new Error('Response truncated (finish_reason=length). Increase max_tokens or simplify schema.');\n}\nif (choice.message.refusal) {\n  throw new Error('Model refused to classify: ' + choice.message.refusal);\n}\n\nconst classification = JSON.parse(choice.message.content);\n\nreturn [{\n  json: {\n    source: source,\n    message: message,\n    ...classification\n  }\n}];"
+      },
+      "id": "9bcee5e0-69b1-4992-b664-47c3f03babc6",
+      "name": "Classify - OpenAI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst item = items[0].json;\n\nconst CATEGORY_TO_QUEUE = {\n  'Bug Report': 'Engineering',\n  'Feature Request': 'Product',\n  'Billing Issue': 'Billing',\n  'Technical Question': 'IT/Security',\n  'Incident/Outage': 'Engineering-Urgent'\n};\n\nconst ESCALATION_KEYWORDS = [\n  'outage', 'down for all users', 'all users affected',\n  'system down', 'critical failure', 'data breach',\n  'security incident', 'multiple users affected'\n];\n\nconst CONFIDENCE_THRESHOLD = 0.70;\n\n// --- Validate and clamp confidence based on signal fields ---\nconst single = item.single_category_match;\nconst alt = item.alternative_category;\nconst uncertain = item.user_expresses_uncertainty;\nconst identifiers = item.explicit_identifiers_present;\nlet confidence = item.confidence;\nlet confidence_clamped = false;\n\nlet lo, hi;\nif (!single && alt !== null) {\n  lo = 0.50; hi = 0.75;\n} else if (!single || uncertain) {\n  lo = 0.60; hi = 0.82;\n} else if (single && !uncertain && identifiers) {\n  lo = 0.90; hi = 0.97;\n} else if (single && !uncertain && !identifiers) {\n  lo = 0.82; hi = 0.92;\n} else {\n  lo = 0.70; hi = 0.90;\n}\n\nif (confidence < lo || confidence > hi) {\n  confidence = Math.max(lo, Math.min(hi, parseFloat(confidence.toFixed(2))));\n  confidence_clamped = true;\n}\n\nlet escalation_needed = item.escalation_needed;\nlet escalation_reason = item.escalation_reason;\n\n// Priority override: Incidents are always High\nlet priority = item.priority;\nif (item.category === 'Incident/Outage') {\n  priority = 'High';\n}\n\n// Route to queue (pure mapping, no side effects)\nlet destination_queue = CATEGORY_TO_QUEUE[item.category] || 'Fallback-Escalation';\n\nconst message_lower = item.message.toLowerCase();\n\nif (!escalation_needed) {\n  if (confidence < CONFIDENCE_THRESHOLD) {\n    escalation_needed = true;\n    escalation_reason = 'Low confidence (' + confidence.toFixed(2) + ') below threshold (' + CONFIDENCE_THRESHOLD + ')';\n  }\n\n  for (const kw of ESCALATION_KEYWORDS) {\n    if (message_lower.includes(kw)) {\n      escalation_needed = true;\n      escalation_reason = \"Escalation keyword detected: '\" + kw + \"'\";\n      break;\n    }\n  }\n\n  if (item.category === 'Billing Issue') {\n    const amountMatch = item.message.match(/\\$\\s*([\\d,]+(?:\\.\\d{2})?)/);\n    if (amountMatch) {\n      const amount = parseFloat(amountMatch[1].replace(/,/g, ''));\n      if (amount > 500) {\n        escalation_needed = true;\n        escalation_reason = 'Billing amount $' + amount.toFixed(2) + ' exceeds $500 threshold';\n      }\n    }\n  }\n}\n\nif (escalation_needed) {\n  destination_queue = 'Escalation';\n}\n\nreturn [{\n  json: {\n    ...item,\n    confidence: confidence,\n    confidence_clamped: confidence_clamped,\n    priority: priority,\n    destination_queue: destination_queue,\n    escalation_needed: escalation_needed,\n    escalation_reason: escalation_reason,\n    human_review_flag: escalation_needed\n  }\n}];"
+      },
+      "id": "5a39d095-3be7-4cb8-b9df-a2afc77819eb",
+      "name": "Route & Escalate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "a08eb9c1-ced3-4cff-9c02-5d021f5d93df",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "leftValue": "={{ $json.escalation_needed }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "02048a76-6405-4fd1-8f38-96c7ec4b3485",
+      "name": "IF Escalation",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nitems[0].json.routing_destination = \"Escalation Queue\";\nreturn items;"
+      },
+      "id": "3b522b63-b239-44c4-9618-e68ebfdce478",
+      "name": "Set Escalation Queue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "leftValue": ""
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "6e56798d-30b3-4e2e-bad0-820fdbac933c",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.destination_queue }}",
+                    "rightValue": "Engineering"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Engineering"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "leftValue": ""
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "6269fd43-37e1-43b7-8b50-fcc85c80d432",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.destination_queue }}",
+                    "rightValue": "Product"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Product"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "leftValue": ""
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "bda75236-8a0b-4ded-b727-5aa6cd143aae",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.destination_queue }}",
+                    "rightValue": "Billing"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Billing"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "leftValue": ""
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "57b097b3-4645-426a-a2f2-00d019a1077f",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.destination_queue }}",
+                    "rightValue": "IT/Security"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "IT/Security"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "leftValue": ""
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "b9aaa657-7a12-478f-92e8-fc3ba9817bf3",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.destination_queue }}",
+                    "rightValue": "Engineering-Urgent"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Engineering-Urgent"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "44df7d84-9533-4a7e-9e5f-9ec3079e9335",
+      "name": "Switch Route",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        1100,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nitems[0].json.routing_destination = \"Engineering\";\nreturn items;"
+      },
+      "id": "450b13a7-2d18-45eb-8da0-0b0dbf9737ec",
+      "name": "Set Engineering",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nitems[0].json.routing_destination = \"Product\";\nreturn items;"
+      },
+      "id": "f9451e06-787b-43c4-bae9-8324d2cd0526",
+      "name": "Set Product",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nitems[0].json.routing_destination = \"Billing\";\nreturn items;"
+      },
+      "id": "3173c474-74c8-447b-8642-510f942f477a",
+      "name": "Set Billing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nitems[0].json.routing_destination = \"IT/Security\";\nreturn items;"
+      },
+      "id": "a630fa40-5123-401b-b4c9-4eb1fc54ca0f",
+      "name": "Set IT Security",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        650
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nitems[0].json.routing_destination = \"Engineering-Urgent\";\nreturn items;"
+      },
+      "id": "636f8bfb-7497-4297-9303-ba14c50e2663",
+      "name": "Set Engineering-Urgent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nitems[0].json.routing_destination = \"Fallback-Escalation\";\nreturn items;"
+      },
+      "id": "1d2ec9db-7bcc-4209-9ea6-ec0d2f6976dc",
+      "name": "Set Fallback Escalation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        950
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst item = items[0].json;\n\nconst outputUrl = $env.OUTPUT_WEBHOOK_URL;\n\nif (outputUrl) {\n  try {\n    await this.helpers.httpRequest({\n      method: 'POST',\n      url: outputUrl,\n      headers: { 'Content-Type': 'application/json' },\n      body: JSON.stringify(item)\n    });\n  } catch (e) {\n    // Log failure but don't block the pipeline\n  }\n}\n\nreturn items;"
+      },
+      "id": "7a1f0713-c6f8-46cb-b449-e42ce6bac4f5",
+      "name": "Write to Output Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "6c4aa432-c367-495b-8a5b-8b8d1e38b87d",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        500
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Input": {
+      "main": [
+        [
+          {
+            "node": "Classify - OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify - OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Route & Escalate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route & Escalate": {
+      "main": [
+        [
+          {
+            "node": "IF Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Escalation": {
+      "main": [
+        [
+          {
+            "node": "Set Escalation Queue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Switch Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Escalation Queue": {
+      "main": [
+        [
+          {
+            "node": "Write to Output Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Route": {
+      "main": [
+        [
+          {
+            "node": "Set Engineering",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Product",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Billing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set IT Security",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Engineering-Urgent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Fallback Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Engineering": {
+      "main": [
+        [
+          {
+            "node": "Write to Output Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Product": {
+      "main": [
+        [
+          {
+            "node": "Write to Output Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Billing": {
+      "main": [
+        [
+          {
+            "node": "Write to Output Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set IT Security": {
+      "main": [
+        [
+          {
+            "node": "Write to Output Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Engineering-Urgent": {
+      "main": [
+        [
+          {
+            "node": "Write to Output Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Fallback Escalation": {
+      "main": [
+        [
+          {
+            "node": "Write to Output Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write to Output Log": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [],
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {}
+}
