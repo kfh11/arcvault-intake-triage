@@ -63,6 +63,10 @@ The `reasoning` field is the first field in the schema. The model must articulat
 
 All categorical fields (`category`, `priority`, `urgency_signal`, `alternative_category`) use JSON Schema `enum` arrays. With `strict: true`, the model literally cannot produce a value outside the defined set.
 
+### `urgency_signal` vs `priority`
+
+`priority` is the actionable routing field (Low/Medium/High) used by escalation logic and queue assignment; `urgency_signal` is a finer-grained content-level assessment (Low/Moderate/High/Critical) preserved for downstream analytics and SLA engines that may need a four-tier scale.
+
 ### Single API call (not multi-step)
 
 Classification, signal observation, confidence scoring, enrichment, entity extraction, and summarization happen in a single API call. Structured Outputs guarantees all fields are populated.
